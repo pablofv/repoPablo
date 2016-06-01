@@ -12,7 +12,7 @@ Aclaración: como una causa puede tener mas de un delito, se informa cantidad de 
 /* De acuerdo al select que me proveyeron (ingresados.sql), genero los ingresos de primer instancia de todo el fuero 8 y 9 para el año 2015 
    y los guardo en la tabla PEDIDO_FORES */
 
-create table pedido_FORES as
+create table est_pedido_fores as
 SELECT *
 from (select ROW_NUMBER() over(partition by c.ID_EXPEDIENTE,o2.ID_OFICINA order by FECHA_ASIGNACION ) rn,
           --   OFICINA_RADICACION_MOD(c.ID_CAMBIO_ASIGNACION_EXP,c.FECHA_ASIGNACION,c.ID_EXPEDIENTE,c.ID_OFICINA,c.ID_SECRETARIA) OFICINA_RADICACION,
@@ -55,21 +55,37 @@ order by ID_CAMARA, JUZGADO
 select d.DESCRIPCION_DELITO, /*d.articulo, d.inciso, */p.ID_CAMARA, count(*) -- id_cambio_asignacion_exp, count(*)
 from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                         join delito d on de.ID_DELITO = d.ID_DELITO
-where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268) or (articulo in (173) and inciso in (7) or (articulo in (174) and inciso in (5))))
+where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))
 -- group by p.ID_CAMBIO_ASIGNACION_EXP
 group by p.id_camara, d.descripcion_delito--, d.articulo, d.inciso
 order by /*4,2,3 */ p.id_camara, d.descripcion_delito
 ;
 
 /* Para saber cuantos ingresos diferentes son */
-/* resultado en MCENTRA 935 ingresos */
+/* resultado en MCENTRA 938 ingresos; 335 de federal y 603 penal ordinario */
 
-select p.ID_CAMBIO_ASIGNACION_EXP
+select p.ID_CAMBIO_ASIGNACION_EXP, p.ID_CAMARA
 from est_pedido_fores p
 where exists (select 1
               from DELITO_EXPEDIENTE de join delito d on d.id_delito = de.id_delito
               where de.id_expediente = p.id_expediente
-              and   (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268) or (articulo in (173) and inciso in (7) or (articulo in (174) and inciso in (5))))
-              and   d.id_delito not in (566, 567)) -- luego de un análisis decidimos excluir estos dos delitos
+              and   ((d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))))
+order by p.ID_CAMARA
 ;
 /* También puedo calcular la cantidad de ingresos diferentes si al select resultado lo agrupo por ID_CAMBIO_ASIGNACION_EXP */
+
+
+/******************************************************/
+
+/* Diferentes delitos por ingresos y por cámara */
+
+select id_camara, cantidad, count(*)
+from (select p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP, count(*) cantidad -- d.DESCRIPCION_DELITO, p.ID_CAMARA, count(*) -- id_cambio_asignacion_exp, count(*)
+      from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
+                              join delito d on de.ID_DELITO = d.ID_DELITO
+      where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))
+      group by p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP
+      order by p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP) t_ingresosDiferentes
+group by id_camara, cantidad
+order by id_camara, cantidad
+;
