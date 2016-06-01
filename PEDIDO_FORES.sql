@@ -49,13 +49,13 @@ order by ID_CAMARA, JUZGADO
    con la tabla de delitos para saber cuales son aquellas causas del pedido */
 /* los delitos id_delito = 566 y 567 los excluí de acuerdo a una revisión que hicimos junto a Inés, el resto de los delitos son los pedidos
    de acuerdo a los artículos e incisos que figuran en la tabla DELITOS */
-/* resultado en MCENTRA 1104 registros */
+/* resultado en MCENTRA 1109 registros */
+/* Hoy 1ero Junio me pidió Inés que incluya los dos artículos que habías excluído, así que voy a eliminar la restricción de id 566 y 567 */
 
 select d.DESCRIPCION_DELITO, /*d.articulo, d.inciso, */p.ID_CAMARA, count(*) -- id_cambio_asignacion_exp, count(*)
 from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                         join delito d on de.ID_DELITO = d.ID_DELITO
 where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268) or (articulo in (173) and inciso in (7) or (articulo in (174) and inciso in (5))))
-and   d.id_delito not in (566, 567)
 -- group by p.ID_CAMBIO_ASIGNACION_EXP
 group by p.id_camara, d.descripcion_delito--, d.articulo, d.inciso
 order by /*4,2,3 */ p.id_camara, d.descripcion_delito
