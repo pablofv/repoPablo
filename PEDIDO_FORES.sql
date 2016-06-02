@@ -1,92 +1,125 @@
 /*
-Programa....: PEDIDO_FORES.SQL
-Entorno.....: MCENTRA
-Localización: Proyecto Litigiosidad\LEX100\GitLex100\Algoritmos Estadisticas\SQL Definitivo
+Programa.....: PEDIDO_FORES.SQL
+Entorno......: MCENTRA
+Localización.: Proyecto Litigiosidad\LEX100\GitLex100\Algoritmos Estadisticas\SQL Definitivo
+Programa Base: Proyecto Litigiosidad\LEX100\GitLex100\Algoritmos Estadisticas\SQL Base\INGRESOS.SQL
 
 
-Descripción.: Calcula los expedientes ingresados en el fuero federal y ordinario (cámara 8 y 9) en base a los delitos que pide FORES.
 
-Aclaración: como una causa puede tener mas de un delito, se informa cantidad de ingresos y cantidad de delitos por ingresos
+Descripción.: Calcula los expedientes ingresados en el fuero Criminal y Correccional Federal y 
+              Criminal y Correccional de la Capital Federal en base a los delitos solicitados por el FORES.
+
+Aclaración: como una causa puede tener mas de un delito, se informa cantidad de ingresos por delito y cantidad de ingresos por causa
 */
 
-/* De acuerdo al select que me proveyeron (ingresados.sql), genero los ingresos de primer instancia de todo el fuero 8 y 9 para el año 2015 
-   y los guardo en la tabla PEDIDO_FORES */
+/*
+  PASO 1º
+  Se ejecuta el programa base filtrando por las Cámaras que tramitan los delitos solicitados (de la tabla OFICINA el campo ID_CAMARA con valor 8 o 9)
+
+
+Descripción.: Cuenta los Expedientes ingresados desde una vista (Sub Consulta), tomando la tabla CAMBIO_ASIGNACION_EXP, 
+              buscando entre dos fechas dadas la primer asignación de causas de cada juzgado de cada fuero o Jurisdicción.
+              Crea la tabla EST_PEDIDO_FORES.
+
+Joins.......: Une la tabla CAMBIO_ASIGNACION_EXP con la tabla Expediente por igual ID_EXPEDIENTE filtrando por aquellos donde
+              en el campo NATURALEZA_EXPEDIENTE sean igual a 'P' (solo los expedientes principales)
+              Une la tabla CAMBIO_ASIGNACION_EXP con la tabla OFICINA por igual ID_OFICINA
+              Une la tabla OFICINA con sigo misma en caso que el campo ID_OFICINA_SUPERIOR sea NULO toma ID_OFICINA sino toma ID_OFICINA_SUPERIOR
+              Esto último lo hacemos en caso de que en el campo ID_OFICINA tengamos una Secretaría.
+
+
+Filtros.....: Dentro de la subconsulta, según se requiere para este pedido: 
+              status = 0 para la tabla CAMBIO_ASIGNACION_EXP
+              ID_TIPO_INSTANCIA = 1 para la tabla OFICINA -- Atención, esta condición no es suficiente para tomar solo los Juzgados y sus secretarías
+              ID_CAMARA  = 8 O (ID_CAMARA = 9 Y SIGLA_CEDULAS contenga ('CI', 'CR','JNM', 'RO'))) -- Que incluya si es Cámara 9 (Criminal y Correccional) y 
+              que el  campo sigla_cedula contenga los códigos de Instrucción (CI), Correccional (CR), Menores (JNM) y Rogatorias (RO), esto último
+              es equivalente y más rápido que filtrarlo por descripción para considerar solo los Juzgados.
+              ID_TIPO_OFICINA in (1,2)
+*/
+
 
 create table est_pedido_fores as
 SELECT *
 from (select ROW_NUMBER() over(partition by c.ID_EXPEDIENTE,o2.ID_OFICINA order by FECHA_ASIGNACION ) rn,
-            -- OFICINA_RADICACION_MOD(c.ID_CAMBIO_ASIGNACION_EXP,c.FECHA_ASIGNACION,c.ID_EXPEDIENTE,c.ID_OFICINA,c.ID_SECRETARIA) OFICINA_RADICACION,
-             c.*,
-             o2.DESCRIPCION JUZGADO,
-             o2.SIGLA_CEDULAS,
-             o.ID_TIPO_INSTANCIA,
-             e.NUMERO_EXPEDIENTE,
-             e.ANIO_EXPEDIENTE,
-             o.ID_CAMARA,
-             e.CLAVE_EXPEDIENTE,
-             e.EN_TRAMITE,
-            o2.ID_OFICINA ID_JUZGADO
+             C.ID_CAMBIO_ASIGNACION_EXP,
+             C.ID_EXPEDIENTE,
+             C.FECHA_ASIGNACION,
+             o.ID_CAMARA
       from CAMBIO_ASIGNACION_EXP c
            JOIN EXPEDIENTE e on e.status = 0 and e.ID_EXPEDIENTE = c.ID_EXPEDIENTE and e.NATURALEZA_EXPEDIENTE in ('P')
            JOIN OFICINA o on c.ID_OFICINA = o.ID_OFICINA
            JOIN OFICINA o2 on o2.ID_OFICINA = (CASE WHEN o.ID_OFICINA_SUPERIOR is NULL then o.ID_OFICINA else o.ID_OFICINA_SUPERIOR END)
       where c.status = 0
-      and (c.CODIGO_TIPO_CAMBIO_ASIGNACION != 'IJM'       -- Se Excluyen los ingresos a Mediación
-           or c.CODIGO_TIPO_CAMBIO_ASIGNACION is null     -- Se incluyen los que no poseen código alguno
-          )
       and o.ID_TIPO_INSTANCIA = 1
-      and (o.ID_CAMARA  not in (9, 99) OR (o.ID_CAMARA = 9 and o2.SIGLA_CEDULAS in ('CI', 'CR','JNM', 'RO'))
-          )
-      and o.ID_TIPO_OFICINA in (1,2)    
+      and (o.ID_CAMARA  = 8 OR (o.ID_CAMARA = 9 and o2.SIGLA_CEDULAS in ('CI', 'CR','JNM', 'RO')))  
+           -- Se utiliza el campo sigla_cedulas por ser equivalente a filtrar por descripcion like'%JUZGADO%' and descripción like'%CORRECCIONAL%' ETC.
+      and o.ID_TIPO_OFICINA in (1,2) -- Se utiliza para considerar que en la Cámara Criminal y Correcional Federal solo tome los Juzgados y Secretarias
      )
 where rn = 1
   and trunc(FECHA_ASIGNACION) between to_date('20150101', 'YYYYMMDD') and to_date('20151231', 'YYYYMMDD')
-  and id_camara in (8,9)
---GROUP BY ID_CAMARA, JUZGADO
-order by ID_CAMARA, JUZGADO
 ;
 
-/* Una vez obtenidos estos, los relaciono con la tabla delito expediente para saber que delitos tienen cada uno y a su vez lo relaciono
-   con la tabla de delitos para saber cuales son aquellas causas del pedido */
-/* los delitos id_delito = 566 y 567 los excluí de acuerdo a una revisión que hicimos junto a Inés, el resto de los delitos son los pedidos
-   de acuerdo a los artículos e incisos que figuran en la tabla DELITOS */
-/* resultado en MCENTRA 1109 registros */
-/* Hoy 1ero Junio me pidió Inés que incluya los dos artículos que habías excluído, así que voy a eliminar la restricción de id 566 y 567 */
+/* PASO 2 -- CANTIDAD DE INGRESOS POR DELITO POR CÁMARA
+   De la tabla EST_PEDIDOS_FORES se calculan las cantidades de ingresos discriminando por los delitos descriptos en lo solicitado por FORES
 
-select p.ID_CAMARA, d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_DELITO, count(*) -- id_cambio_asignacion_exp, count(*)
+   Joins..: Une la tabla EST_PEDIDO_FORES con la tabla  DELITO_EXPEDIENTE por el campo ID_EXPEDIENTE
+            Une la tabla DELITO con la tabla DELITO_EXPEDIENTE por el campo ID_DELITO
+            une la tabla CAMARA con la tabla EST_PEDIDO_FORES por el campo ID_CAMARA
+            
+   Filtros: Que el campo ARTICULO contenga ((256, 257, 258, 259, 260, 261, 265, 266, 267, 268) 
+                                            o ((campo articulo contenga 173 y campo inciso contenga 7) 
+                                                 o (campo articulo contenga 174 and campo inciso contenga 5)))
+                                                 
+   El resultado en MCENTRA es 1109 registros 
+   Agrupado por: Artículo del Código Penal, Apertura del artículo, Inciso, Descripción del Delito, Cámara
+   Ordenado por: Cámara, Artículo del Código Penal, Apertura del artículo, Inciso, Descripción del Delito
+   
+*/
+
+
+select CA.DESCRIPCION, d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_DELITO, count(*) 
 from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                         join delito d on de.ID_DELITO = d.ID_DELITO
-where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))
--- group by p.ID_CAMBIO_ASIGNACION_EXP
-group by d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_DELITO, p.ID_CAMARA
-order by /*4,2,3 */ p.id_camara, d.articulo, d.apertura_articulo nulls first, d.inciso, d.DESCRIPCION_DELITO
+                        join camara ca on P.ID_CAMARA = CA.ID_CAMARA
+where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)
+  or (articulo in (173) and inciso in (7))
+  or (articulo in (174) and inciso in (5))
+group by d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_DELITO, CA.DESCRIPCION
+order by CA.DESCRIPCION, d.articulo, d.apertura_articulo nulls first, d.inciso, d.DESCRIPCION_DELITO
 ;
 
-/* Para saber cuantos ingresos diferentes son */
-/* resultado en MCENTRA 938 ingresos; 335 de federal y 603 penal ordinario */
+/* PASO 3 -- CANTIDAD DE INGRESOS POR CAUSA POR CÁMARA
+   De la tabla EST_PEDIDOS_FORES se calculan las cantidades de ingresos agrupando por causa y por cámara  
+   esto se logra con una consulta anidada (de adentro hasia afuera).
 
-select p.ID_CAMBIO_ASIGNACION_EXP, p.ID_CAMARA
-from est_pedido_fores p
-where exists (select 1
-              from DELITO_EXPEDIENTE de join delito d on d.id_delito = de.id_delito
-              where de.id_expediente = p.id_expediente
-              and   ((d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))))
-order by p.ID_CAMARA
-;
-/* También puedo calcular la cantidad de ingresos diferentes si al select resultado lo agrupo por ID_CAMBIO_ASIGNACION_EXP */
+   Primer consulta devuelve: Descripción de Cámara, Identificación de Asignación y la cantidad
+   
+   Joins..: Une la tabla EST_PEDIDO_FORES con la tabla  DELITO_EXPEDIENTE por el campo ID_EXPEDIENTE
+            Une la tabla DELITO con la tabla DELITO_EXPEDIENTE por el campo ID_DELITO
+            une la tabla CAMARA con la tabla EST_PEDIDO_FORES por el campo ID_CAMARA
+   
+   Filtros: Que el campo ARTICULO contenga ((256, 257, 258, 259, 260, 261, 265, 266, 267, 268) 
+                                            o ((campo articulo contenga 173 y campo inciso contenga 7) 
+                                                 o (campo articulo contenga 174 and campo inciso contenga 5)))
+   Se agrupa y se ordena por la Descripción de Cámara e Identificación de Asignación
+  
+  Segunda consulta devuelve: Descripción de Cámara, cantidad de delitos por ingreso (primer consulta) y cantidad de ingresos por cantidad de delitos
+  Se agrupa y se ordena por la Descripción y cantidad de delitos por ingreso
+  
+   El resultado en MCENTRA 938 ingresos; 335 de federal y 603 penal ordinario
+*/
 
 
-/******************************************************/
-
-/* Diferentes delitos por ingresos y por cámara */
-
-select id_camara, cantidad, count(*)
-from (select p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP, count(*) cantidad -- d.DESCRIPCION_DELITO, p.ID_CAMARA, count(*) -- id_cambio_asignacion_exp, count(*)
+select DESCRIPCION, cantidad, count(*)
+from (select CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP, count(*) cantidad 
       from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                               join delito d on de.ID_DELITO = d.ID_DELITO
-      where (d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)) or ((articulo in (173) and inciso in (7)) or ((articulo in (174) and inciso in (5))))
-      group by p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP
-      order by p.id_camara, p.ID_CAMBIO_ASIGNACION_EXP) t_ingresosDiferentes
-group by id_camara, cantidad
-order by id_camara, cantidad
+                              join camara ca on P.ID_CAMARA = ca.ID_CAMARA
+      where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)
+        or (articulo in (173) and inciso in (7))
+        or (articulo in (174) and inciso in (5))
+      group by CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP
+      order by CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP) t_ingresosDiferentes
+group by DESCRIPCION, cantidad
+order by DESCRIPCION, cantidad
 ;
