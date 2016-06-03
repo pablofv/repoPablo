@@ -81,7 +81,8 @@ select CA.DESCRIPCION, d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_
 from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                         join delito d on de.ID_DELITO = d.ID_DELITO
                         join camara ca on P.ID_CAMARA = CA.ID_CAMARA
-where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)
+where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267) --,268)
+  or (articulo in (268) and inciso is null)   -- Para trer solo el articulo sin incisos
   or (articulo in (173) and inciso in (7))
   or (articulo in (174) and inciso in (5))
 group by d.articulo, d.apertura_articulo, d.inciso, d.DESCRIPCION_DELITO, CA.DESCRIPCION
@@ -110,12 +111,13 @@ order by CA.DESCRIPCION, d.articulo, d.apertura_articulo nulls first, d.inciso, 
 */
 
 
-select DESCRIPCION, cantidad, count(*)
+select DESCRIPCION, cantidad, count(*), (CANTIDAD * COUNT(*)) TOTAL
 from (select CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP, count(*) cantidad 
       from EST_PEDIDO_FORES p JOIN DELITO_EXPEDIENTE de on p.ID_EXPEDIENTE = de.ID_EXPEDIENTE
                               join delito d on de.ID_DELITO = d.ID_DELITO
                               join camara ca on P.ID_CAMARA = ca.ID_CAMARA
-      where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267, 268)
+      where d.articulo in (256, 257, 258, 259, 260, 261, 265, 266, 267)  -- ,268)
+        or (articulo in (268) and inciso is null)      -- Para trer solo el articulo sin incisos
         or (articulo in (173) and inciso in (7))
         or (articulo in (174) and inciso in (5))
       group by CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP
@@ -123,3 +125,4 @@ from (select CA.DESCRIPCION, p.ID_CAMBIO_ASIGNACION_EXP, count(*) cantidad
 group by DESCRIPCION, cantidad
 order by DESCRIPCION, cantidad
 ;
+
